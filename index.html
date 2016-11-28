@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<meta charset="utf-8">
+
+<style>
+    body {
+        font: 11px sans-serif;
+    }
+    
+    .axis path,
+    .axis line {
+        fill: none;
+        stroke: #000;
+        shape-rendering: crispEdges;
+    }
+    
+    .dot {
+        stroke: #000;
+    }
+    
+    .selected-hospital {
+        color: red;
+        opacity: 1;
+        stroke-width: 2;
+        fill: black;
+    }
+    
+    .tooltip {
+        position: absolute;
+        width: 200px;
+        height: 28px;
+        pointer-events: none;
+    }
+</style>
+
+<body>
+    <script src="http://d3js.org/d3.v4.js"></script> 
+    <div id="controls">    
+    <p>Select max hospital grade:
+        <select onchange="setHospitalMaxFilterLevel(this.options[this.selectedIndex].value);">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option selected value="5">5</option>
+        </select>
+    </p>
+    
+    <p>Select min hospital grade:
+        <select onchange="setHospitalMinFilterLevel(this.options[this.selectedIndex].value);">
+            <option selected value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+        </select>
+    </p>
+    
+    <p>Set X:
+        <select onchange="setxAxisTopic(this.options[this.selectedIndex].value);">
+            <option selected value="Total Avg Adj">Total Avg Adj</option>
+            <option value="Average Covered Charges">Average Covered Charges</option>
+            <option value="Total Discharges">Total Discharges</option>
+        </select>
+    </p>
+    
+    <p>Set Y:
+        <select onchange="setyAxisTopic(this.options[this.selectedIndex].value);">
+            <option value="Total Avg Adj">Total Avg Adj</option>
+            <option selected value="Average Covered Charges">Average Covered Charges</option>
+            <option value="Total Discharges">Total Discharges</option>
+        </select>
+    </p>
+
+    <p>Set R:
+        <select onchange="setrTopic(this.options[this.selectedIndex].value);">
+            <option value="Total Avg Adj">Total Avg Adj</option>
+            <option value="Average Covered Charges">Average Covered Charges</option>
+            <option selected value="Total Discharges">Total Discharges</option>
+        </select>
+    </p>
+    
+    <p>Choose DRG:
+        <select onchange="setDrgDefn(this.options[this.selectedIndex].value);">
+            <option value="038 - EXTRACRANIAL PROCEDURES W CC">038 - EXTRACRANIAL PROCEDURES W CC</option>
+            <option value="037 - EXTRACRANIAL PROCEDURES W MCC">037 - EXTRACRANIAL PROCEDURES W MCC</option>
+            <option selected value="313 - CHEST PAIN">313 - CHEST PAIN</option>
+            <option value="175 - PULMONARY EMBOLISM W MCC">175 - PULMONARY EMBOLISM W MCC</option>
+            <option value="176 - PULMONARY EMBOLISM WO MCC">176 - PULMONARY EMBOLISM WO MCC</option>
+            <option value="637 - DIABETES W MCC">637 - DIABETES W MCC</option>
+            <option value="638 - DIABETES W CC">638 - DIABETES W CC</option>
+            <option value="639 - DIABETES WO CCMCC">639 - DIABETES WO CCMCC</option>
+            <option value=""></option>
+        </select>
+    </p>
+    
+    <p>Set Transition Time:
+        <select onchange="setTransitionTime(this.options[this.selectedIndex].value);">
+            <option value="0">0</option>
+            <option value="250">250</option>
+            <option selected value="500">500</option>
+            <option value="750">750</option>
+            <option value="1000">1000</option>
+            <option value="1500">1500</option>
+            <option value="2000">2000</option>
+            <option value="10000">10000</option>
+        </select>
+    </p>
+
+</div>
+    <div id="chart1"> </div>
+    <script>
+        var baseTransitionTime = 500;
+        function setTransitionTime(newLevel) {
+            baseTransitionTime = newLevel
+            renderVis();
+        }
+        
+        var selectedHospital;
+        var currentSelection = {name:"", drg:""};
+        
+        var drgDefn = "313 - CHEST PAIN";
+        function setDrgDefn(newLevel) {
+            drgDefn = newLevel
+            renderVis();
+        }
+        
+        var hospitalMinFilterLevel = 1;
+        function setHospitalMinFilterLevel(newLevel) {
+            hospitalMinFilterLevel = newLevel
+            renderVis();
+        }
+        
+        var hospitalMaxFilterLevel = 5;
+        function setHospitalMaxFilterLevel(newLevel) {
+            hospitalMaxFilterLevel = newLevel
+            renderVis();
+        }
+        
+        var xAxisTopic = "Total Avg Adj";
+        function setxAxisTopic(newLevel) {
+            xAxisTopic = newLevel
+            renderVis();
+        }
+        
+        var yAxisTopic = "Average Covered Charges";
+        function setyAxisTopic(newLevel) {
+            yAxisTopic = newLevel
+            renderVis();
+        }
+        
+        var rTopic = "Total Discharges";
+        function setrTopic(newLevel) {
+            rTopic = newLevel
+            renderVis();
+        }
+        
+        
+        
+        var margin = {
+                top: 20
+                , right: 20
+                , bottom: 30
+                , left: 40
+            };
+        
+        var width = window.innerWidth - margin.left - margin.right - 40;
+        
+        var controlsHeight = document.getElementById('controls').clientHeight;
+        var height = window.innerHeight - controlsHeight - margin.top - margin.bottom - 60;
+
+        var cValue = function (d) { return d[rTopic]; };
+        var color = d3.scaleOrdinal(d3.schemeCategory10);
+        
+        var svg = d3.select("#chart1").append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+        
+        var tooltip = d3.select("body")
+            .append("div")
+            .attr("class", "tooltip")
+            .style("opacity", 0);
+
+        function renderVis() {
+            d3.csv("dataForNC5.csv", function (error, data) {
+                data.forEach(function (d) {
+                    d["Total Avg Adj"] = +d["Total Avg Adj"]
+                    d["Hospital overall rating"] = +d["Hospital overall rating"];
+                    d["Average Covered Charges"] = +d["Average Covered Charges"];
+                    d["Total Discharges"] = +d["Total Discharges"];
+                });
+                data_subset = data.filter(function (d) {
+                    return ((d["Hospital overall rating"] <= hospitalMaxFilterLevel) &&
+                            (d["Hospital overall rating"] >= hospitalMinFilterLevel) &&
+                            (d["DRG Definition"] == drgDefn)
+                           );
+                });
+                var xValue = function (d) { return d[xAxisTopic]; }; 
+                var xScale = d3.scaleLinear().range([0+margin.left, width-margin.right]); 
+                var xDatRange = d3.max([xDatRange, 5]);
+                var xDatRangeBuffer = xDatRange * 0.30;
+                xScale.domain([
+                                d3.min([d3.min(data_subset, xValue) - xDatRangeBuffer, 1]), 
+                                d3.max([d3.max(data_subset, xValue) - xDatRangeBuffer, 5.5])
+                              ]);
+                
+                var xMap = function (d) {return xScale(xValue(d)); }; 
+                var xAxis = d3.axisBottom(xScale);
+                
+                svg.selectAll("g.x.axis")
+                    .remove()
+                    .call(xAxis);
+                var yValue = function (d) { return d[yAxisTopic]; }; 
+                var yScale = d3.scaleLinear().range([height-margin.top, 0+margin.bottom]); 
+                var yDatRange = d3.max(data_subset) - d3.min(data_subset);
+                var yDatRange = d3.max([yDatRange, 5]);
+                var yDatRangeBuffer = yDatRange * 0.30;
+                
+                yScale.domain([
+                                d3.min([d3.min(data_subset, yValue) - yDatRangeBuffer, 1]), 
+                                d3.max([d3.max(data_subset, yValue) - yDatRangeBuffer, 5.5])
+                              ]);
+                
+                var yMap = function (d) { return yScale(yValue(d)); }; 
+                var yAxis = d3.axisLeft(yScale);
+                svg.selectAll("g.y.axis")
+                    .remove()
+                    .call(yAxis);
+                
+                var rValue = function (d) {return d[rTopic];},
+                rScale = d3.scaleLinear()
+                    .domain([d3.min(data_subset, rValue) - 1, d3.max(data_subset, rValue) + 1])
+                    .range([2, 20]), 
+                rMap = function (d) {return rScale(rValue(d));}; 
+                
+                svg.append("g").attr("class", "x axis")
+                    .attr("transform", "translate(0," + height + ")")
+                    .call(xAxis).append("text")
+                    .attr("class", "label")
+                    .attr("x", width)
+                    .attr("y", -6).style("text-anchor", "end");
+
+                svg.append("g").attr("class", "y axis")
+                    .call(yAxis)
+                    .append("text")
+                    .attr("class", "label")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 6).attr("dy", ".71em")
+                    .style("text-anchor", "end");
+                    
+                var dots = d3.select("svg").selectAll(".dot")
+                    .data(data_subset, function (d) {
+                    return d["Hospital Name"];
+                });
+                
+                dots
+                    .transition()
+                    .duration(baseTransitionTime)
+                    .attr("cx", xMap)
+                    .attr("cy", yMap)
+                    .attr("r", rMap);
+                
+                dots.exit()
+                    .transition()
+                    .duration(baseTransitionTime)
+                    .attr("r", 0)
+                    .remove();
+                
+                dots.enter()
+                    .append("circle")
+                    .attr("class", "dot")
+                    .attr("opacity", 0.4)
+                    .attr("cx", xMap)
+                    .attr("cy", yMap)
+                    .attr("stroke", "blue")
+                    .attr("stroke-width", 0.1)
+                    .style("fill", function (d) {
+                        return color(cValue(d));
+                    })
+                    .attr("r", rMap)
+                    .on("mouseover", function (d) {
+                        tooltip.transition().duration(200).style("opacity", .9);
+                        tooltip.html(d["Hospital Name"] + "<br/> (" + xValue(d) + ", " + yValue(d) + ")").style("left", (d3.event.pageX + 5) + "px").style("top", (d3.event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function (d) {
+                        tooltip.transition().duration(500).style("opacity", 0);
+                    })
+                    .on("click", function (d) {
+                        d3.selectAll(".selected-hospital").classed("selected-hospital", false);
+                        d3.select(this).classed("selected-hospital", !d3.select(this).classed("selected-hospital"));
+                        ob = d3.select(this);
+                        tooltip.transition().duration(500).style("opacity", 0);
+                        currentSelection.name = d["Hospital Name"];
+                        currentSelection.drg = d["DRG Definition"];
+                    })
+                    .transition()
+                    .duration(baseTransitionTime);
+            });
+        }
+        renderVis();
+        function setAsSelected(t){
+
+        }
+    </script>
+</body>
+
+</html>
